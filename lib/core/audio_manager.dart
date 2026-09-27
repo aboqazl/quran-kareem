@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -40,13 +39,7 @@ class QuranAudioManager {
   Future<void> playAyah(Ayah ayah, String surahName) async {
     final uri = await uriFor(ayah);
     await player.setAudioSource(AudioSource.uri(
-      uri,
-      tag: MediaItem(
-        id: ayah.key,
-        album: 'القرآن الكريم',
-        title: 'سورة $surahName • الآية ${ayah.ayah}',
-        artist: reciters.firstWhere((r) => r.id == _reciter, orElse: () => reciters.first).nameAr,
-      ),
+      uri
     ));
     await player.play();
   }
@@ -57,14 +50,8 @@ class QuranAudioManager {
       for (final ayah in ayahs) {
         final uri = await uriFor(ayah);
         sources.add(AudioSource.uri(
-          uri,
-          tag: MediaItem(
-            id: '${ayah.key}-$round',
-            album: 'القرآن الكريم',
-            title: 'سورة ${surahName(ayah.surah)} • الآية ${ayah.ayah}',
-            artist: reciters.firstWhere((r) => r.id == _reciter, orElse: () => reciters.first).nameAr,
-          ),
-        ));
+          uri
+    ));
       }
     }
     await player.setAudioSources(sources);
