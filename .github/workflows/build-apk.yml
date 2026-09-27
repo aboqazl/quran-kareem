@@ -1,0 +1,64 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: Fetch Quran source files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p third_party_source/quran
+          base="https://ctan.math.washington.edu/tex-archive/macros/unicodetex/latex/quran/tex"
+          curl -fL --retry 3 "$base/quran.sty" -o third_party_source/quran/quran.sty
+          curl -fL --retry 3 "$base/qurantext-uthmani.def" -o third_party_source/quran/qurantext-uthmani.def
+          curl -fL --retry 3 "$base/qurantext-simple.def" -o third_party_source/quran/qurantext-simple.def
+
+      - name: Generate Quran data
+        run: python3 tools/build_quran_data.py
+
+      - name: Verify Quran data
+        run: python3 tools/verify_data.py
+
+      - name: Generate Android host
+        run: flutter create --platforms=android --org com.qurankareem --project-name quran_kareem .
+
+      - name: Patch Android host
+        run: python3 tools/patch_native.py
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: quran-kareem-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
