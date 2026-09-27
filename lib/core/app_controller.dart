@@ -29,7 +29,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> init() async {
     try {
-      await Future.wait([quran.load(), prefs.init(), reminders.init()]);
+      await Future.wait([quran.load(), prefs.init()]);
       bookmarks = prefs.bookmarks;
       notes = prefs.notes;
       readPages = prefs.readPages;
@@ -41,6 +41,11 @@ class AppController extends ChangeNotifier {
       reminderEnabled = prefs.reminderEnabled;
       reminderTime = TimeOfDay(hour: prefs.reminderHour, minute: prefs.reminderMinute);
       audio.setReciter(reciter);
+      try {
+        await reminders.init();
+      } catch (_) {
+        // Reminders are optional and must never block app startup.
+      }
       initialized = true;
     } catch (e) {
       initError = e;
@@ -129,15 +134,20 @@ class AppController extends ChangeNotifier {
   Future<void> setReminder(bool enabled, TimeOfDay time) async {
     reminderTime = time;
     reminderEnabled = enabled;
-    if (enabled) {
-      final allowed = await reminders.requestPermission();
-      if (!allowed) {
-        reminderEnabled = false;
+    try {
+      if (enabled) {
+        await reminders.init();
+        final allowed = await reminders.requestPermission();
+        if (!allowed) {
+          reminderEnabled = false;
+        } else {
+          await reminders.scheduleDaily(time.hour, time.minute);
+        }
       } else {
-        await reminders.scheduleDaily(time.hour, time.minute);
+        await reminders.cancelDaily();
       }
-    } else {
-      await reminders.cancelDaily();
+    } catch (_) {
+      reminderEnabled = false;
     }
     await prefs.setReminder(
       enabled: reminderEnabled,
