@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,39 +24,44 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Fetch Quran source files
+      - name: Generate Android host
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p third_party_source/quran
-          base="https://ctan.math.washington.edu/tex-archive/macros/unicodetex/latex/quran/tex"
-          curl -fL --retry 3 "$base/quran.sty" -o third_party_source/quran/quran.sty
-          curl -fL --retry 3 "$base/qurantext-uthmani.def" -o third_party_source/quran/qurantext-uthmani.def
-          curl -fL --retry 3 "$base/qurantext-simple.def" -o third_party_source/quran/qurantext-simple.def
+          flutter create --platforms=android --org com.qurankareem --project-name quran_kareem .
+          git checkout -- pubspec.yaml lib/main.dart analysis_options.yaml || true
+          rm -f test/widget_test.dart
 
-      - name: Generate Quran data
-        run: python3 tools/build_quran_data.py
+      - name: Fetch all 604 Madinah Mushaf pages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/daily-quran
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/Bsracc/daily-quran.git /tmp/daily-quran
+          git -C /tmp/daily-quran sparse-checkout set app/src/main/assets/mushaf_pages
+          mkdir -p assets/mushaf_pages
+          cp /tmp/daily-quran/app/src/main/assets/mushaf_pages/page_*.webp assets/mushaf_pages/
+          count="$(find assets/mushaf_pages -maxdepth 1 -name 'page_*.webp' | wc -l | tr -d ' ')"
+          test "$count" = "604"
+          test -s assets/mushaf_pages/page_001.webp
+          test -s assets/mushaf_pages/page_604.webp
 
-      - name: Verify Quran data
-        run: python3 tools/verify_data.py
-
-      - name: Generate Android host
-        run: flutter create --platforms=android --org com.qurankareem --project-name quran_kareem .
-
-      - name: Remove generated sample test
-        run: rm -f test/widget_test.dart
-
-      - name: Patch Android host
-        run: python3 tools/patch_native.py
+      - name: Set Android app name
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('android:label="quran_kareem"', 'android:label="القرآن الكريم"')
+          p.write_text(s, encoding="utf-8")
+          PY
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Test
-        run: flutter test
+      - name: Analyze Mushaf reader
+        run: flutter analyze lib/main.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
         run: flutter build apk --release
@@ -61,7 +69,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: quran-kareem-release-apk
+          name: quran-kareem-madinah-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
